@@ -26,8 +26,11 @@ Lightweight, quantized deep learning system for mobile-friendly skin lesion clas
 ## Contribution  
 - [`Extension of existing work`]  
 - [`Novel contribution`]  
+- We improve skin lesion classification for mobile devices as follows:
 
-
+  - Contribution 1: We implement model quantization and pruning to reduce memory footprint and inference time, enabling fast, real-time on-device predictions without sacrificing clinically relevant accuracy.
+  - Contribution 2: We integrate explainable visualizations via Grad-CAM directly into the mobile pipeline, allowing clinicians and users to see why the model makes each prediction.
+  - Contribution 3: We implement on-device uncertainty estimation, giving users and clinicians confidence metrics alongside predictions to support better decision-making.
 ## References  
 ### `BibTeX` of all references used in the project. Can be included as a `references.bib` file in the repo.  
 
