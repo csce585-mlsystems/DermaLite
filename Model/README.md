@@ -6,18 +6,18 @@
 
 ```shell
 #Install Python 3.10.13 via pyenv if you haven't already
-- pyenv install 3.10.13
+pyenv install 3.10.13
 
 #Create a virtual environment (replace [YOUR_PATH] with your desired path)
-- python3.10 -m venv [YOUR_PATH]
+python3.10 -m venv [YOUR_PATH]
 
 #Activate the virtual environment
-- source [YOUR_PATH]/bin/activate
+source [YOUR_PATH]/bin/activate
 ```
 
 2. Download TensorFlow packages that allow for Apple Silicon to be used more effectively through MPS 
 ```shell
-- pip install tensorflow-macos tensorflow-metal
+pip install tensorflow-macos tensorflow-metal
 ```
 
 ## Downloading the dataset for local training and fixing the pathing
@@ -32,10 +32,10 @@
 
 4. Run model.py to train the model using that dataset. It should take a couple of minutes.
 ```python
-- python model.py
+python model.py
 ```
 
 5. To load/run the model, use the load_model.py script 
 ```python
-- python load_model.py
+python load_model.py
 ```
