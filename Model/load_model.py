@@ -6,7 +6,7 @@ import os
 from sklearn.model_selection import train_test_split
 
 # Load saved model
-model = load_model("dermalite_model.h5")  
+model = load_model("dermalite_mobilenet_model.h5")  
 
 # Load metadata
 df = pd.read_csv("/Users/t/Downloads/archive/HAM10000_metadata.csv")
@@ -45,5 +45,6 @@ val_generator = val_datagen.flow_from_dataframe(
 )
 
 # Evaluate the model
-loss, acc = model.evaluate(val_generator)
+loss, acc, auc = model.evaluate(val_generator)
 print(f"Validation Accuracy: {acc:.4f}, Loss: {loss:.4f}")
+

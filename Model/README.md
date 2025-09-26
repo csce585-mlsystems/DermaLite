@@ -30,12 +30,17 @@ pip install tensorflow-macos tensorflow-metal
 
 ## Running the scripts
 
-4. Run model.py to train the model using that dataset. It should take a couple of minutes.
-```python
-python model.py
-```
+4. Run model.py to train the model using that dataset. Should take a couple of minutes.
 
-5. To load/run the model, use the load_model.py script 
-```python
-python load_model.py
-```
+- python model.py
+
+This script will save the trained weights to the root directory. 
+- dermalite_mobilenet_model.h5
+
+5. Run convert.py to generate the .mlpackage 
+The conversion script takes the trained Keras H5 file and outputs the optimized Core ML format. Like all the other files, verify that the paths are correct with regards to your machine. 
+- This will produce dermalite_model.mlpackage
+
+6. To load/run the model, use the load_model.py script to check the accuracy.
+
+- python load_model.py 
