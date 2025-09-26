@@ -1,5 +1,12 @@
-tensorflow>=2.10.0
-pandas>=1.5.0
-scikit-learn>=1.1.0
-pillow>=9.0.0
-numpy>=1.21.0
+# CORE DEPENDENCIES 
+tensorflow==2.13.0
+tensorflow-macos==2.13.0
+tensorflow-metal==1.0.1
+coremltools==8.3.0
+h5py==3.14.0
+protobuf==4.25.8
+
+pandas==2.3.2
+numpy==1.23.5
+scikit-learn==1.7.2
+pillow==11.3.0
