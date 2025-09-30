@@ -5,49 +5,86 @@ import SwiftData
 struct ScanView: View {
     @State private var selectedItem: PhotosPickerItem? = nil
     @State private var selectedImage: UIImage? = nil
+    @State private var isAnalyzing = false
+    @State private var savedLesion: Lesion? = nil
     @Environment(\.modelContext) private var modelContext
-
+    
     var body: some View {
-        VStack {
-            if let image = selectedImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                Button("Continue") {
-                    let uiImage = image
-                    Task { @MainActor in
-                        do {
-                            let fileName = UUID().uuidString + ".jpg"
-                            let url = try saveImageToDocuments(uiImage: uiImage, fileName: fileName)
-                            // Insert model
-                            let lesion = Lesion(imageFileName: fileName)
-                            modelContext.insert(lesion)
-                            try modelContext.save()
-                            // Reset selection after saving
-                            selectedItem = nil
-                            selectedImage = nil
-                        } catch {
-                            print("Failed to save image: \(error)")
+        NavigationStack {
+            VStack {
+                if let image = selectedImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                    Button("Continue") {
+                        let uiImage = image
+                        isAnalyzing = true
+                        
+                        Task { @MainActor in
+                            do {
+                                let fileName = UUID().uuidString + ".jpg"
+                                let url = try saveImageToDocuments(uiImage: uiImage, fileName: fileName)
+                                
+                                // Create lesion first
+                                let lesion = Lesion(imageFileName: fileName)
+                                modelContext.insert(lesion)
+                                try modelContext.save()
+                                
+                                // Perform ML inference
+                                MLService.shared.predict(image: uiImage) { diagnosis, confidence in
+                                    Task { @MainActor in
+                                        lesion.predictedDiagnosis = diagnosis
+                                        lesion.confidence = confidence
+                                        try? modelContext.save()
+                                        
+                                        savedLesion = lesion
+                                        isAnalyzing = false
+                                        
+                                        // Reset selection after saving
+                                        selectedItem = nil
+                                        selectedImage = nil
+                                    }
+                                }
+                            } catch {
+                                print("Failed to save image: \(error)")
+                                isAnalyzing = false
+                            }
                         }
                     }
-                }
-            } else {
-                PhotosPicker(selection: $selectedItem, matching: .images) {
-                    Text("Select Photo")
-                }
-                .onChange(of: selectedItem) { newItem in
-                    Task {
-                        if let data = try? await newItem?.loadTransferable(type: Data.self),
-                           let uiImage = UIImage(data: data) {
-                            selectedImage = uiImage
+                    .disabled(isAnalyzing)
+                    
+                    if isAnalyzing {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Analyzing image...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 8)
+                    }
+                } else {
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        Text("Select Photo")
+                    }
+                    .onChange(of: selectedItem) { newItem in
+                        Task {
+                            if let data = try? await newItem?.loadTransferable(type: Data.self),
+                               let uiImage = UIImage(data: data) {
+                                selectedImage = uiImage
+                            }
                         }
                     }
                 }
             }
+            .navigationDestination(item: $savedLesion) { lesion in
+                LesionDetailView(lesion: lesion)
+            }
         }
     }
+    
+    
 }
-
 private extension ScanView {
     func saveImageToDocuments(uiImage: UIImage, fileName: String) throws -> URL {
         guard let data = uiImage.jpegData(compressionQuality: 0.9) else {

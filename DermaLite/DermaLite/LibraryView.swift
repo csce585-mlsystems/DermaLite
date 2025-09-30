@@ -23,16 +23,23 @@ struct LibraryView: View {
                 }
             } else {
                 List(lesions) { lesion in
-                    HStack(spacing: 12) {
-                        ThumbnailView(fileName: lesion.imageFileName)
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(lesion.createdAt, style: .date)
-                                .font(.headline)
-                            Text(lesion.createdAt, style: .time)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    NavigationLink(destination: LesionDetailView(lesion: lesion)) {
+                        HStack(spacing: 12) {
+                            ThumbnailView(fileName: lesion.imageFileName)
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(lesion.createdAt, style: .date)
+                                    .font(.headline)
+                                Text(lesion.createdAt, style: .time)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if let diagnosis = lesion.predictedDiagnosis {
+                                    Text(diagnosis)
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
                         }
                     }
                 }
