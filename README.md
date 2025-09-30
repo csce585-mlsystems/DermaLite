@@ -35,7 +35,7 @@ Lightweight, quantized deep learning system for mobile-friendly skin lesion clas
 ## Future Ideas  
 - A pipeline that transforms and augments input images into a format that enables more accurate classification by the model.
 
-
+- Rather than just sticking with one CNN (MobileNet), we can also experiment with EfficientNet and quantize the models made from that. This way, our experiment and project are more robust and insightful, rather than just analyzing the metrics after quantization and being able to deploy them on mobile.  
 
 
 
