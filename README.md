@@ -46,7 +46,7 @@ Lightweight, quantized deep learning system for mobile-friendly skin lesion clas
 ## References  
 ### `BibTeX` of all references used in the project. Can be included as a `references.bib` file in the repo.  
 
----
+- [MobileNet-V2: An Enhanced Skin Disease Classification by Attention and Multi-Scale Features](https://pmc.ncbi.nlm.nih.gov/articles/PMC12092329/)
 
 # < The following is only applicable for the final project submission >  
 
