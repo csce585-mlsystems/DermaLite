@@ -1,179 +1,148 @@
-#region --- Imports ---
 import os
 import pandas as pd
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras import layers, models, Input
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.metrics import AUC, CategoricalAccuracy
 from sklearn.model_selection import train_test_split
-from sklearn.utils.class_weight import compute_class_weight
+from torchvision import transforms, models
+from tqdm import tqdm
+import torch
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image
+import torch.nn as nn
+from torchvision import transforms
+import torch.optim as optim
 
-#endregion
+# custom dataset class 
 
-#region --- Parameters ---
-DATA_CSV = "/Users/t/Downloads/archive/HAM10000_metadata.csv"
-PART1 = "/Users/t/Downloads/archive/HAM10000_images_part_1"
-PART2 = "/Users/t/Downloads/archive/HAM10000_images_part_2"
-IMG_SIZE = (224, 224)
-BATCH_SIZE = 32
-L2_REG = 1e-4             # Regularization factor
-EPOCHS_BASE = 15         
-EPOCHS_FINE = 15          
-#endregion
+class HAM10000Dataset(Dataset):
+  def __init__(self,dataframe, transform= None):
+    self.df = dataframe.dropna(subset=["image_path"])
+    self.transform = transform
+    self.label2idx = {label: idx for idx, label in enumerate(sorted(self.df["dx"].unique()))}
+    self.idx2label = {v: k for k, v in self.label2idx.items()}
 
-#region --- Step 1: Load CSV and image paths ---
-df = pd.read_csv(DATA_CSV)
-df['image_id'] = df['image_id'] + '.jpg'
+  def __len__(self):
+    return len(self.df)
+    
+  def __getitem__(self,idx):
+    row = self.df.iloc[idx]
+    img = Image.open(row["image_path"]).convert("RGB")
+    label = self.label2idx[row["dx"]]
+    if self.transform:
+      img = self.transform(img)
+    return img, label
+  
+if __name__ == "__main__":
+   
+  ## Dataset preprocessing 
 
-# Map labels
-lesion_types = df['dx'].unique()
-num_classes = len(lesion_types)
-print("Classes:", lesion_types)
+  # Paths
+  root_dir = "/Users/t/Downloads/archive"
+  part1 = os.path.join(root_dir, "HAM10000_images_part_1")
+  part2 = os.path.join(root_dir, "HAM10000_images_part_2")
+  meta_path = os.path.join(root_dir, "HAM10000_metadata.csv")
 
-# Define function to get full path
-def get_full_path(image_id):
-    path1 = os.path.join(PART1, image_id)
-    path2 = os.path.join(PART2, image_id)
-    if os.path.exists(path1):
-        return path1
-    elif os.path.exists(path2):
-        return path2
-    return None
+  # Read metadata
+  df = pd.read_csv(meta_path)
 
-df['filepath'] = df['image_id'].apply(get_full_path)
-df = df[df['filepath'].notnull()]
-print(f"Total valid images: {len(df)}")
-#endregion
+  # Merge both image folders
+  all_image_paths = {os.path.basename(x): os.path.join(part1, x)
+                    for x in os.listdir(part1)}
+  all_image_paths.update({os.path.basename(x): os.path.join(part2, x)
+                          for x in os.listdir(part2)})
 
-#region --- Step 2: Train/Validation Split ---
-train_df, val_df = train_test_split(
-    df,
-    test_size=0.2,
-    stratify=df['dx'],
-    random_state=42
-)
-#endregion
+  # Add full path column
+  df["image_path"] = df["image_id"].map(lambda x: all_image_paths.get(f"{x}.jpg"))
+  print(df.head())
+    
+  ## data transformation and loaders
 
-#region --- Step 3: Image Generators (Robust Augmentation) ---
-train_datagen = ImageDataGenerator(
-    rescale=1./255,
-    rotation_range=30,
-    width_shift_range=0.15,
-    height_shift_range=0.15,
-    zoom_range=0.2,
-    brightness_range=[0.8, 1.2],
-    horizontal_flip=True,
-    vertical_flip=True 
-)
+  # split into sets
+  train_df, val_df = train_test_split(df, stratify= df["dx"], test_size = 0.2, random_state = 42)
 
-val_datagen = ImageDataGenerator(rescale=1./255)
+  # transformations that generate slightly different version of the same image
+  # Goal: to make the model generalize better and prevent overfitting
+  train_transform = transforms.Compose([
+    transforms.Resize((224,224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(), # conversion to PIL (Python Image Library) to PyTorch tensor 
+    transforms.Normalize(mean= [.485, .456, .406], std = [.229, .224, .225]) # ImageNet normalizaton 
+  ])
 
-train_generator = train_datagen.flow_from_dataframe(
-    dataframe=train_df,
-    x_col='filepath',
-    y_col='dx',
-    target_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    class_mode='categorical',
-    shuffle=True,
-    color_mode="rgb"
-)
+  # evaluate model accurately without randomness 
+  val_transform = transforms.Compose([
+    transforms.Resize((224,224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[.485,.456,.406], std = [.229,.224, .225])
+  ])
 
-val_generator = val_datagen.flow_from_dataframe(
-    dataframe=val_df,
-    x_col='filepath',
-    y_col='dx',
-    target_size=IMG_SIZE,
-    batch_size=BATCH_SIZE,
-    class_mode='categorical',
-    shuffle=False,
-    color_mode="rgb"
-)
-#endregion
+  # Training / Validating Datasets
+  train_ds = HAM10000Dataset(train_df, transform=train_transform)
+  val_ds = HAM10000Dataset(val_df, transform=val_transform)
 
-#region --- Step 4: Build MobileNetV2 model ---
-# Explicitly define input tensor
-inputs = Input(shape=IMG_SIZE + (3,))
+  #DataLoaders for batch loading 
+  train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=4)
+  val_loader = DataLoader(val_ds, batch_size=32, shuffle=False, num_workers=4)
 
-# Base Model: MobileNetV2 for mobile deployment focus
-base_model = MobileNetV2(weights='imagenet', include_top=False, input_tensor=inputs)
+    
+  ## MobileNetV2 Model 
+  # uses MPS (Metal Performance Shaders) Backend for GPU training acceleration 
+  # if not compatible, falls back on standard cpu usage 
+  device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-# Custom classification head with Regularization
-x = layers.GlobalAveragePooling2D()(base_model.output)
-x = layers.Dropout(0.3)(x)
-x = layers.Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(L2_REG))(x)
-# Added L2 regularization to the final classification layer
-output = layers.Dense(num_classes, activation='softmax', kernel_regularizer=tf.keras.regularizers.l2(L2_REG))(x) 
-model = models.Model(inputs=inputs, outputs=output)
+  # should be 7 classes for the skin lesions
+  num_classes = len(train_ds.label2idx)
 
-# Freeze base model initially
-base_model.trainable = False
+  # loading pre-trained model for transfer learning
+  # not sensible to rebuild from scratch because of a small dataset 
+  # If built from scratch: overfitting of the data 
+  model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
 
-# Added AUC to metrics list for better evaluation of imbalanced data
-model.compile(
-    optimizer='adam',
-    loss='categorical_crossentropy',
-    metrics=[CategoricalAccuracy(name='accuracy'), AUC(name='auc')]
-)
-model.summary()
-#endregion
+  # replaces original classifier from mobilenet
+  in_features = model.classifier[1].in_features
+  model.classifier = nn.Sequential(nn.Dropout(0.2),
+      nn.Linear(in_features, num_classes)
+  )
+  model = model.to(device)
 
-#region --- Step 5: Compute Class Weights ---
-class_weights_array = compute_class_weight(
-    class_weight='balanced',
-    classes=np.unique(train_df['dx']),
-    y=train_df['dx']
-)
-class_weights = dict(enumerate(class_weights_array))
-print("Class weights:", class_weights)
-#endregion
+  criterion = nn.CrossEntropyLoss()
+  optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-#region --- Step 6: Callbacks ---
-callbacks = [
-    tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True), 
-    tf.keras.callbacks.ReduceLROnPlateau(patience=5, factor=0.2) 
-]
-#endregion
+  # training loop 
+  num_epochs = 5
+  best_acc = 0.0
 
-#region --- Step 7: Base Training (Feature Extraction) ---
-print("\n--- Starting Base Training (Feature Extraction) ---")
-history_base = model.fit(
-    train_generator,
-    validation_data=val_generator,
-    epochs=EPOCHS_BASE,
-    class_weight=class_weights, 
-    callbacks=callbacks
-)
-#endregion
+  for epoch in range(num_epochs):
+      # --- Training ---
+      model.train()
+      running_loss = 0.0
+      for imgs, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
+          imgs, labels = imgs.to(device), labels.to(device)
+          optimizer.zero_grad()
+          outputs = model(imgs)
+          loss = criterion(outputs, labels)
+          loss.backward()
+          optimizer.step()
+          running_loss += loss.item() * imgs.size(0)
+      
+      train_loss = running_loss / len(train_ds)
+      
+      # --- Validation ---
+      model.eval()
+      correct = 0
+      total = 0
+      with torch.no_grad():
+          for imgs, labels in val_loader:
+              imgs, labels = imgs.to(device), labels.to(device)
+              outputs = model(imgs)
+              _, preds = torch.max(outputs, 1)
+              correct += (preds == labels).sum().item()
+              total += labels.size(0)
+      val_acc = correct / total
+      
+      print(f"Epoch {epoch+1}: Train Loss = {train_loss:.4f} | Val Acc = {val_acc:.4f}")
+      
+      # Save best model
+      if val_acc > best_acc:
+          best_acc = val_acc
+          torch.save(model.state_dict(), "mobilenetv2_ham10000.pth")
 
-#region --- Step 8: Fine-Tuning ---
-print("\n--- Starting Fine-Tuning ---")
-base_model.trainable = True
-
-# Aggressive Fine-Tuning: Unfreeze a larger section (MobileNetV2 is smaller, so unfreeze more)
-# MobileNetV2 has about 155 layers; unfreezing the last 70 is a good start.
-for layer in base_model.layers[:-70]:
-    layer.trainable = False
-
-# Compile again with a very low learning rate for fine-tuning
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(1e-5), 
-    loss='categorical_crossentropy',
-    metrics=[CategoricalAccuracy(name='accuracy'), AUC(name='auc')]
-)
-
-history_finetune = model.fit(
-    train_generator,
-    validation_data=val_generator,
-    epochs=EPOCHS_FINE,
-    class_weight=class_weights, 
-    callbacks=callbacks
-)
-#endregion
-
-#region --- Step 9: Save Model ---
-model.save("dermalite_mobilenet_model.h5")
-print("Saved dermalite_mobilenet_model.h5")
-#endregion
+  print(f"Training complete. Best Val Accuracy: {best_acc:.4f}")
