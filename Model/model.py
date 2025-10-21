@@ -30,6 +30,53 @@ class HAM10000Dataset(Dataset):
       img = self.transform(img)
     return img, label
   
+# grad cam class
+
+class GradCAM:
+    def __init__(self, model, target_layer_name):
+        self.model = model
+        self.target_layer = dict([*model.features.named_children()])[target_layer_name]
+        self.gradients = None
+        self.activations = None
+        self.hook_layers()
+
+    def hook_layers(self):
+        def forward_hook(module, input, output):
+            self.activations = output.detach()
+
+        def backward_hook(module, grad_in, grad_out):
+            self.gradients = grad_out[0].detach()
+
+        self.target_layer.register_forward_hook(forward_hook)
+        self.target_layer.register_backward_hook(backward_hook)
+
+    def generate_cam(self, input_tensor, target_class=None):
+        self.model.eval()
+        output = self.model(input_tensor)
+
+        if target_class is None:
+            target_class = output.argmax(dim=1).item()
+
+        # Zero gradients
+        self.model.zero_grad()
+
+        # Backprop for the chosen class
+        class_loss = output[0, target_class]
+        class_loss.backward()
+
+        # Global-average-pool the gradients
+        weights = self.gradients.mean(dim=[0, 2, 3], keepdim=True)
+
+        # Weighted combination of activations
+        cam = (weights * self.activations).sum(dim=1, keepdim=True)
+
+        # Apply ReLU and normalize
+        cam = torch.relu(cam)
+        cam = cam - cam.min()
+        cam = cam / cam.max()
+
+        return cam
+
 if __name__ == "__main__":
    
   ## Dataset preprocessing 
