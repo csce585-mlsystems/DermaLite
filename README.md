@@ -38,22 +38,59 @@ Lightweight, quantized deep learning system for mobile-friendly skin lesion clas
 - Rather than just sticking with one CNN (MobileNet), we can also experiment with EfficientNet and quantize the models made from that. This way, our experiment and project are more robust and insightful, rather than just analyzing the metrics after quantization and being able to deploy them on mobile.  
 
 
-
-
-
-
-
 ## References  
-### `BibTeX` of all references used in the project. Can be included as a `references.bib` file in the repo.  
+- Nirupama, and Virupakshappa. “Mobilenet-V2: An Enhanced Skin Disease Classification by Attention and Multi-Scale Features.” Journal of Imaging Informatics in Medicine, U.S. National Library of Medicine, June 2025, pmc.ncbi.nlm.nih.gov/articles/PMC12092329/.
+- Himel, Galib Muhammad Shahriar, et al. “Skin Cancer Segmentation and Classification Using Vision Transformer for Automatic Analysis in Dermatoscopy-Based Noninvasive Digital System.” International Journal of Biomedical Imaging, U.S. National Library of Medicine, 3 Feb. 2024, pmc.ncbi.nlm.nih.gov/articles/PMC10858797/. 
 
-- [MobileNet-V2: An Enhanced Skin Disease Classification by Attention and Multi-Scale Features](https://pmc.ncbi.nlm.nih.gov/articles/PMC12092329/)
+## Reproducing Code for Milestone 1 
 
+### 1. Download the Dataset
+- Dataset: HAM10000 (10,015 dermatoscopic images across 7 categories: `akiec`, `bcc`, `bkl`, `df`, `nv`, `mel`, `vasc`)  
+- Download link: [HAM10000 on Kaggle](https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000)  
+
+```bash
+# Install Kaggle CLI if not already installed
+pip install kaggle
+
+# Download dataset
+kaggle datasets download -d kmader/skin-cancer-mnist-ham10000
+
+# Unzip to data folder
+unzip skin-cancer-mnist-ham10000.zip -d data/
+```
+
+### 2. Install Dependencies
+```bash
+uv sync
+```
+
+### 2. Train the model
+```bash
+python trainp0.py
+```
+### What to Look for During Training
+
+- **Training and validation loss** decreasing over epochs  
+- **Training and validation accuracy** improving  
+- **Early stopping messages** (if validation performance plateaus)  
+- **Final metrics printed at the end**, including:
+  - **Accuracy**: Overall classification correctness
+  - **AUC**: Ability to rank positive cases higher than negative cases
+  - **Loss**: Categorical crossentropy
+
+  
 # < The following is only applicable for the final project submission >  
+
 
 ## Dependencies  
 ### Include all dependencies required to run the project. Example:  
-- Python 3.11  
-- Ubuntu 22.04  
+- Python 3.12+  
+- Ubuntu 22.04 / macOS 13+
+- TensorFlow >= 2.20.0
+- Pandas >= 2.2.3
+- NumPy >= 1.26.0
+- scikit-learn >= 1.6.0
+- Pillow >= 11.0.0
 
 For Python users: Please use [uv](https://docs.astral.sh/uv/) as your package manager instead of `pip`. Your repo must include both the `uv.lock` and `pyproject.toml` files.  
 
@@ -74,24 +111,7 @@ Example:
 - If your project computes/compares metrics such as accuracy, latency, or energy, you must include the `result.<ext>` script to plot the results.  
 - Result files such as `.csv`, `.jpg`, or raw data must be saved in the `data` directory.  
 
-## How to Run  
-- Include all instructions (`commands`, `scripts`, etc.) needed to run your code.  
-- Provide all other details a computer science student would need to reproduce your results.  
-
-Example:  
-- Download the [DATASET](dataset_link)
-  ```bash
-  wget <URL_of_file>
-  ```
-
-- To train the model, run:  
-  ```bash
-  python train.py
-  ```  
-- To plot the results, run:  
-  ```bash
-  python result.py
-  ```  
+## How to reproduce code 
 
 ## Demo  
 - All projects must include video(s) demonstrating your project.  
