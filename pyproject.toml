@@ -1,0 +1,9 @@
+[project]
+name = "dermalite"
+version = "0.1.0"
+description = "Lightweight, quantized skin lesion classification"
+requires-python = ">=3.12"
+
+[tool.uv]
+build-backend = "setuptools.build_meta"
+
