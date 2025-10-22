@@ -1,0 +1,32 @@
+# DermaLite Model Requirements
+# Python 3.8+
+# Consolidated requirements for both binary and multiclass classifiers
+
+# Core Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data Processing
+pandas>=1.5.0
+numpy>=1.23.0
+pillow>=9.0.0
+
+# Machine Learning Utilities
+scikit-learn>=1.2.0
+
+# Progress Bars
+tqdm>=4.64.0
+
+# Visualization (for benchmarking and dataset verification)
+matplotlib>=3.5.0
+seaborn>=0.12.0
+
+# Dataset Download (optional - for Kaggle datasets)
+kaggle>=1.5.0
+
+# Optional: For CoreML conversion (iOS deployment)
+# coremltools>=8.0.0
+# tensorflow>=2.13.0  # Required for CoreML conversion
+
+# Optional: For better performance
+# opencv-python>=4.7.0  # Alternative image processing
