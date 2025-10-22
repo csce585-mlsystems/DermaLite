@@ -1,0 +1,27 @@
+# Requirements for model_v2.py and ISIC 2024 dataset integration
+# Python 3.8+
+
+# Core Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data Processing
+pandas>=1.5.0
+numpy>=1.23.0
+pillow>=9.0.0
+
+# Machine Learning Utilities
+scikit-learn>=1.2.0
+
+# Progress Bars
+tqdm>=4.64.0
+
+# Visualization (optional, for verify_dataset.py)
+matplotlib>=3.5.0
+
+# Dataset Download (for download_isic2024.sh)
+kaggle>=1.5.0
+
+# Optional: For better performance
+# openpyxl>=3.0.0  # If working with Excel files
+# opencv-python>=4.7.0  # Alternative image processing

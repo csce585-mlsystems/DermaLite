@@ -1,0 +1,8 @@
+HAM10000_dataset/
+venv/
+*.pycache
+__pycache__/
+.claude/
+ISIC2024_dataset/
+model_v2/
+*.png
