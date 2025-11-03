@@ -1,8 +1,5 @@
 import os
-import tensorflow as tf
 import coremltools as ct
-from tensorflow.keras import layers, models
-from tensorflow.keras.applications import MobileNetV2
 
 # Keras Conversion 
 
@@ -60,13 +57,13 @@ import coremltools as ct
 from torchvision import models
 import torch.nn as nn
 
-### USER INPUT 
+### USER INPUT
 # Path to your PyTorch .pth file
-PTH_PATH = "/Users/t/Desktop/DermaLite/mobilenetv2_ham10000.pth"
-MLPACKAGE_PATH = "dermalite_mobilenetv2.mlpackage"
+PTH_PATH = "/Users/ryancaudill/Desktop/DermaLite/Model/binary_classifier/checkpoints/best_binary_model.pth"
+MLMODEL_PATH = "dermalite_binary_classifier.mlmodel"
 
 # Number of classes in your HAM10000 dataset
-NUM_CLASSES = 7
+NUM_CLASSES = 2
 
 # Device
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -79,8 +76,9 @@ model.classifier = nn.Sequential(
     nn.Linear(in_features, NUM_CLASSES)
 )
 
-# Load trained weights
-model.load_state_dict(torch.load(PTH_PATH, map_location=device))
+# Load trained weights from checkpoint
+checkpoint = torch.load(PTH_PATH, map_location=device)
+model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()  # set to evaluation mode
 
 # 1. Create example input tensor
@@ -94,9 +92,10 @@ print("PyTorch model successfully traced to TorchScript.")
 mlmodel = ct.convert(
     traced_model,  # Pass the traced_model instead of the raw model object
     inputs=[ct.ImageType(name="input_1", shape=example_input.shape, scale=1/255.0, bias=[0,0,0])],
+    convert_to="neuralnetwork",  # Use older format that works with Python 3.13
     source='pytorch'
 )
 
-# Save as .mlpackage
-mlmodel.save(MLPACKAGE_PATH)
-print(f"Core ML .mlpackage saved at: {MLPACKAGE_PATH}")
+# Save as .mlmodel
+mlmodel.save(MLMODEL_PATH)
+print(f"Core ML .mlmodel saved at: {MLMODEL_PATH}")
