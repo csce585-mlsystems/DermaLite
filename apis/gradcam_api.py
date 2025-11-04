@@ -14,7 +14,7 @@ num_classes = 7
 model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
 in_features = model.classifier[1].in_features
 model.classifier = nn.Sequential(nn.Dropout(0.2), nn.Linear(in_features, num_classes))
-model.load_state_dict(torch.load("mobilenetv2_ham10000.pth", map_location=device))
+model.load_state_dict(torch.load("mobilenetv2_ham10000_balanced.pth", map_location=device))
 model.eval().to(device)
 
 # --- Grad-CAM helper ---
