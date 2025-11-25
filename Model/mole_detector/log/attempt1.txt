@@ -1,0 +1,15 @@
+Initial Mole Detection Model Report: The "Smart Hans" Failure
+
+Our initial attempt to construct a mole detection model on Apple Silicon utilized a ResNet-18 architecture for binary classification. The positive class consisted of the ISIC 2024 and HAM10000 datasets (professional dermoscopy), while the negative class relied on Caltech 101 (general internet objects).
+
+The Outcome
+The model immediately achieved 100% accuracy on the validation set. While statistically impressive, this result was a red flag indicating the model had learned "shortcuts" rather than pathology.
+
+The Diagnosis
+Instead of learning to identify melanoma, the model learned to identify Dermoscopy. It successfully distinguished the specific artifacts of medical imaging—circular black vignettes, oil immersion lighting, and scale bars—from standard consumer photography. Effectively, we built a "Medical Camera Detector" rather than a lesion classifier.
+
+The Fine-Tuning Attempt
+We attempted to mitigate this by introducing "hard negatives" to the negative class, including Oxford-IIIT Pets (for biological features like eyes/fur) and the DTD dataset (for skin-like abstract textures). Despite fine-tuning, the validation metrics remained near 100%.
+
+Real-World Failure
+The failure was confirmed when testing the model on a smartphone photo of a real mole. The model predicted "Not Mole" because the image lacked the specific lighting and artifacts of the ISIC dataset. This confirmed that the domain shift between medical equipment and consumer phone cameras was too vast for standard training to overcome, necessitating a robust restart with aggressive data augmentation to destroy the "medical look" of the training data.
