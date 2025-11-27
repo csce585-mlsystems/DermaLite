@@ -51,10 +51,10 @@ class MLService {
             moleDetectorModel = try VNCoreMLModel(for: moleDetectorCoreMLModel.model)
             print("MLService: Mole detector loaded successfully")
 
-            // Load binary classifier
-            let binaryCoreMLModel = try dermalite_binary_classifier(configuration: config)
+            // Load binary classifier (Hybrid ResNet50 + Random Forest)
+            let binaryCoreMLModel = try MalignancyResNet50Features(configuration: config)
             binaryModel = try VNCoreMLModel(for: binaryCoreMLModel.model)
-            print("MLService: Binary classifier loaded successfully")
+            print("MLService: Hybrid binary classifier loaded successfully")
 
             // Load multiclass classifier
             let multiclassCoreMLModel = try dermalite_mobilenetv2(configuration: config)
@@ -140,8 +140,8 @@ class MLService {
             if let results = request.results as? [VNClassificationObservation],
                let topResult = results.first {
                 print("MLService Binary: Top result = \(topResult.identifier), confidence = \(topResult.confidence)")
-                // Class 0 = Benign, Class 1 = Malignant
-                let isMalignant = (topResult.identifier == "1")
+                // New hybrid model outputs "Benign" or "Malignant"
+                let isMalignant = (topResult.identifier == "Malignant")
                 completion(isMalignant, Double(topResult.confidence))
                 return
             }
@@ -153,18 +153,18 @@ class MLService {
                 // Try dictionary format
                 let dict = fv.dictionaryValue
                 if !dict.isEmpty {
-                    var class0Prob: Double = 0.0
-                    var class1Prob: Double = 0.0
+                    var benignProb: Double = 0.0
+                    var malignantProb: Double = 0.0
                     for (key, value) in dict {
                         if let label = key as? String {
                             let prob = value.doubleValue
-                            if label == "0" { class0Prob = prob }
-                            else if label == "1" { class1Prob = prob }
+                            if label == "Benign" { benignProb = prob }
+                            else if label == "Malignant" { malignantProb = prob }
                         }
                     }
-                    let isMalignant = class1Prob > class0Prob
-                    let confidence = max(class0Prob, class1Prob)
-                    print("MLService Binary: Class 0 (benign) = \(class0Prob), Class 1 (malignant) = \(class1Prob)")
+                    let isMalignant = malignantProb > benignProb
+                    let confidence = max(benignProb, malignantProb)
+                    print("MLService Binary: Benign = \(benignProb), Malignant = \(malignantProb)")
                     completion(isMalignant, confidence)
                     return
                 }
