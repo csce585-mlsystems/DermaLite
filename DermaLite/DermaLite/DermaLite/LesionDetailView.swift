@@ -30,9 +30,8 @@ struct LesionDetailView: View {
                         .padding()
                         .background(Color(.systemGray6))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                    } else if let diagnosis = lesion.predictedDiagnosis,
-                              let confidence = lesion.confidence {
-                        // Results Card
+                    } else if let diagnosis = lesion.predictedDiagnosis {
+                        // Results Card (confidence hidden but still tracked)
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Analysis Results")
                                 .font(.title2)
@@ -47,19 +46,20 @@ struct LesionDetailView: View {
                                     .fontWeight(.medium)
                             }
 
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Confidence")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                HStack {
-                                    Text("\(Int(confidence * 100))%")
-                                        .font(.title3)
-                                        .fontWeight(.medium)
-                                    Spacer()
-                                    ProgressView(value: confidence)
-                                        .frame(width: 100)
-                                }
-                            }
+                            // Confidence section hidden
+                            // VStack(alignment: .leading, spacing: 8) {
+                            //     Text("Confidence")
+                            //         .font(.subheadline)
+                            //         .foregroundStyle(.secondary)
+                            //     HStack {
+                            //         Text("\(Int((lesion.confidence ?? 0) * 100))%")
+                            //             .font(.title3)
+                            //             .fontWeight(.medium)
+                            //         Spacer()
+                            //         ProgressView(value: lesion.confidence ?? 0)
+                            //             .frame(width: 100)
+                            //     }
+                            // }
 
                             Divider()
 

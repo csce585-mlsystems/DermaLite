@@ -5,8 +5,7 @@ import UIKit
 
 struct ScanView: View {
     @State private var selectedItem: PhotosPickerItem? = nil
-    @State private var selectedImage: UIImage? = nil          // raw selected or camera image
-    @State private var croppedImage: UIImage? = nil           // final image used for analysis
+    @State private var selectedImage: UIImage? = nil          // selected or camera image (may be cropped)
     @State private var cameraImage: UIImage? = nil
     @State private var showCropView = false
     @State private var showCamera = false
@@ -17,8 +16,8 @@ struct ScanView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                if let image = croppedImage {
-                    // Preview of final image to be analyzed
+                if let image = selectedImage {
+                    // Preview image (show selectedImage, which may be original or cropped)
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
@@ -27,43 +26,52 @@ struct ScanView: View {
                         .shadow(radius: 4)
                         .padding(.horizontal)
 
-                    HStack(spacing: 12) {
+                    // New 3-button layout
+                    VStack(spacing: 12) {
                         Button {
-                            // allow re-cropping / selecting different area
                             showCropView = true
                         } label: {
-                            Label("Select Different Area", systemImage: "crop")
+                            Label("Crop", systemImage: "crop")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
 
                         Button {
-                            // Use the full (uncropped) selected image instead of cropped preview
-                            if let sel = selectedImage {
-                                croppedImage = sel
-                            }
+                            // Cancel - reset and return to scan view
+                            selectedImage = nil
+                            selectedItem = nil
+                            cameraImage = nil
                         } label: {
-                            Label("Use Full Image", systemImage: "square")
+                            Label("Cancel", systemImage: "xmark")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                    }
+                        .frame(maxWidth: .infinity)
 
-                    Button(action: continueWithImage) {
-                        HStack {
+                        Button(action: continueWithImage) {
                             if isAnalyzing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Analyzing...")
+                                        .bold()
+                                }
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                Label("Confirm", systemImage: "checkmark")
+                                    .frame(maxWidth: .infinity)
                             }
-                            Text(isAnalyzing ? "Analyzing..." : "Continue")
-                                .bold()
                         }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
+                        .disabled(isAnalyzing)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isAnalyzing)
-                    .padding(.top, 6)
+                    .padding(.horizontal)
 
                 } else {
                     VStack(spacing: 12) {
-                        HStack(spacing: 12) {
+                        VStack(spacing: 12) {
                             Button {
                                 cameraImage = nil
                                 showCamera = true
@@ -74,16 +82,16 @@ struct ScanView: View {
                                 }
                             }
                             .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity)
 
                             PhotosPicker(selection: $selectedItem, matching: .images) {
                                 HStack {
                                     Image(systemName: "photo.on.rectangle")
                                     Text("Choose from Library")
                                 }
-                                .padding(10)
-                                .background(RoundedRectangle(cornerRadius: 8).strokeBorder())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity)
                         }
                         Text("Tip: After choosing a photo you can crop it before analyzing.")
                             .font(.caption)
@@ -96,8 +104,9 @@ struct ScanView: View {
             .navigationDestination(isPresented: $showCropView) {
                 if let image = selectedImage {
                     ImageCropView(originalImage: image) { cropped in
-                        // When crop completes, set the croppedImage so preview and continue button appear.
-                        croppedImage = cropped
+                        // Update selectedImage with cropped version
+                        selectedImage = cropped
+                        showCropView = false  // Return to preview
                     }
                 } else {
                     // fallback UI (shouldn't usually happen)
@@ -113,9 +122,8 @@ struct ScanView: View {
             .onChange(of: cameraImage) { newImage in
                 if let img = newImage {
                     selectedImage = img
-                    // open crop view immediately so user can refine area
                     showCamera = false
-                    showCropView = true
+                    // Don't auto-open crop view - let user choose
                 }
             }
             .onChange(of: selectedItem) { newItem in
@@ -123,8 +131,7 @@ struct ScanView: View {
                     if let data = try? await newItem?.loadTransferable(type: Data.self),
                        let uiImage = UIImage(data: data) {
                         selectedImage = uiImage
-                        // let user crop the selection
-                        showCropView = true
+                        // Don't auto-open crop view - let user choose
                     }
                 }
             }
@@ -143,7 +150,7 @@ struct ScanView: View {
     // MARK: - Actions
 
     private func continueWithImage() {
-        guard let uiImage = croppedImage ?? selectedImage else { return }
+        guard let uiImage = selectedImage else { return }
         isAnalyzing = true
 
         Task { @MainActor in
@@ -171,7 +178,6 @@ struct ScanView: View {
                         selectedItem = nil
                         selectedImage = nil
                         cameraImage = nil
-                        croppedImage = nil
                         showCropView = false
                         showCamera = false
                     }
