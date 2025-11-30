@@ -149,7 +149,7 @@ struct ScanView: View {
         Task { @MainActor in
             do {
                 let fileName = UUID().uuidString + ".jpg"
-                _ = try saveImageToDocuments(uiImage: uiImage, fileName: fileName)
+                let savedURL = try saveImageToDocuments(uiImage: uiImage, fileName: fileName)
 
                 // Create lesion and save
                 let lesion = Lesion(imageFileName: fileName)
@@ -162,6 +162,40 @@ struct ScanView: View {
                         lesion.predictedDiagnosis = diagnosis
                         lesion.confidence = confidence
                         try? modelContext.save()
+
+                        // --- NEW: generate CAM overlay in background (non-blocking) ---
+                        Task.detached { [weak modelContext] in
+                            // Generate overlay image on-device
+                            if let overlayImage = await CAMGenerator.shared.generateCAMOverlay(for: uiImage) {
+                                // create a deterministic filename using lesion id if you prefer
+                                let overlayFileName = "overlay-\(lesion.id.uuidString).jpg"
+                                // Save overlay image to Documents
+                                if let data = overlayImage.jpegData(compressionQuality: 0.9) {
+                                    do {
+                                        let fm = FileManager.default
+                                        let docs = try fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                                        let outURL = docs.appendingPathComponent(overlayFileName)
+                                        try data.write(to: outURL, options: .atomic)
+
+                                        // Persist filename back to the lesion record on main actor
+                                        await MainActor.run {
+                                            // Option A: if your Lesion model has overlayFileName property:
+                                            lesion.overlayFileName = overlayFileName
+                                            try? modelContext?.save()
+
+                                            // Option B (if Lesion has NO overlayFileName): nothing to save; later compute overlay path from image filename
+                                        }
+                                    } catch {
+                                        print("Failed to save overlay image: \(error)")
+                                    }
+                                } else {
+                                    print("Failed to encode overlay image to JPEG")
+                                }
+                            } else {
+                                print("CAM generation returned nil")
+                            }
+                        } // Task.detached end
+                        // --- end NEW ---
 
                         // Trigger navigation to detail view
                         savedLesion = lesion
@@ -182,6 +216,7 @@ struct ScanView: View {
             }
         }
     }
+
 
     // MARK: - Helpers
     private func saveImageToDocuments(uiImage: UIImage, fileName: String) throws -> URL {
