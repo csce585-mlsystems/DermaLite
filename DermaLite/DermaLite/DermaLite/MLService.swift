@@ -18,6 +18,9 @@ class MLService {
     private var multiclassCoreMLModel: MLModel?
 
     private var classLabels: [String]? = nil
+
+    // Mole detector (Stage 0 - pre-filter)
+    private var moleDetectorModel: VNCoreMLModel?
     private let classLabelsFallback: [String] = [
         "akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"
     ]
@@ -71,11 +74,15 @@ class MLService {
 
         print("MLService: Binary classifier loaded successfully")
 
-        // --- MULTICLASS MODEL ---
-        do {
-            let multiclassWrapper = try MobileNetV2_CAM(configuration: config)
-            let multiML = multiclassWrapper.model
-            self.multiclassCoreMLModel = multiML
+            // Load mole detector (Stage 0)
+            let moleDetectorCoreMLModel = try mole_detector(configuration: config)
+            moleDetectorModel = try VNCoreMLModel(for: moleDetectorCoreMLModel.model)
+            print("MLService: Mole detector loaded successfully")
+
+            // Load binary classifier (Hybrid ResNet50 + Random Forest)
+            let binaryCoreMLModel = try MalignancyResNet50Features(configuration: config)
+            binaryModel = try VNCoreMLModel(for: binaryCoreMLModel.model)
+            print("MLService: Hybrid binary classifier loaded successfully")
 
             // Extract class labels if available for fallback mapping
             if let labelsAny = multiML.modelDescription.classLabels {
@@ -111,40 +118,92 @@ class MLService {
         }
     }
 
-    // MARK: - Two-Stage Classification
+    // MARK: - Three-Stage Classification
     func predict(image: UIImage, completion: @escaping (String?, Double?) -> Void) {
-        // Stage 1: Run binary classifier first
-        runBinaryClassification(image: image) { [weak self] isMalignant, binaryConfidence in
+        // Stage 0: Run mole detector first
+        runMoleDetection(image: image) { [weak self] isMole, moleConfidence in
             guard let self = self else {
                 DispatchQueue.main.async { completion(nil, nil) }
                 return
             }
 
-            // Stage 2: If malignant, run multiclass classifier for specific diagnosis
-            print("MLService: Binary classifier determined MALIGNANT (confidence: \(binaryConfidence ?? 0.0)), running multiclass classifier...")
-            self.runMulticlassClassification(image: image) { diagnosis, multiclassConfidence in
-                DispatchQueue.main.async { completion(diagnosis, multiclassConfidence) }
+            // Early exit if no mole detected
+            if !isMole {
+                // Invert confidence for display: if model says 10% chance of mole,
+                // we want to show 90% confidence it's NOT a mole
+                let notMoleConfidence = moleConfidence.map { 1.0 - $0 }
+                print("MLService: Mole detector determined NO MOLE (confidence: \(notMoleConfidence ?? 0.0))")
+                DispatchQueue.main.async {
+                    completion("No Mole Detected", notMoleConfidence)
+                }
+                return
+            }
+
+            print("MLService: Mole detector determined MOLE PRESENT (confidence: \(moleConfidence ?? 0.0)), running binary classifier...")
+
+            // Stage 1: Run binary classifier
+            self.runBinaryClassification(image: image) { isMalignant, binaryConfidence in
+                // If benign, return immediately with binary result
+                if !isMalignant {
+                    print("MLService: Binary classifier determined BENIGN (confidence: \(binaryConfidence ?? 0.0))")
+                    DispatchQueue.main.async { completion("Benign", binaryConfidence) }
+                    return
+                }
+
+                // Stage 2: If malignant, run multiclass classifier for specific diagnosis
+                print("MLService: Binary classifier determined MALIGNANT (confidence: \(binaryConfidence ?? 0.0)), running multiclass classifier...")
+                self.runMulticlassClassification(image: image) { diagnosis, multiclassConfidence in
+                    DispatchQueue.main.async { completion(diagnosis, multiclassConfidence) }
+                }
             }
         }
     }
 
     // MARK: - Binary Classification
     private func runBinaryClassification(image: UIImage, completion: @escaping (Bool, Double?) -> Void) {
-        // If VN wrapper available and model expects image input, use Vision path
-        if let vnModel = self.binaryModel {
-            let request = VNCoreMLRequest(model: vnModel) { request, error in
-                if let error = error {
-                    print("MLService Binary: Error - \(error)")
-                    completion(false, nil)
-                    return
-                }
+        guard let binaryModel = binaryModel else {
+            print("MLService: Binary model not loaded")
+            completion(false, nil)
+            return
+        }
 
-                // Try standard classification results first
-                if let results = request.results as? [VNClassificationObservation],
-                   let topResult = results.first {
-                    print("MLService Binary: Top result = \(topResult.identifier), confidence = \(topResult.confidence)")
-                    let isMalignant = (topResult.identifier == "1")
-                    completion(isMalignant, Double(topResult.confidence))
+        let request = VNCoreMLRequest(model: binaryModel) { request, error in
+            if let error = error {
+                print("MLService Binary: Error - \(error)")
+                completion(false, nil)
+                return
+            }
+
+            // Try standard classification results first
+            if let results = request.results as? [VNClassificationObservation],
+               let topResult = results.first {
+                print("MLService Binary: Top result = \(topResult.identifier), confidence = \(topResult.confidence)")
+                // New hybrid model outputs "Benign" or "Malignant"
+                let isMalignant = (topResult.identifier == "Malignant")
+                completion(isMalignant, Double(topResult.confidence))
+                return
+            }
+
+            // Fallback: handle feature value observations
+            if let featureObservation = request.results?.first as? VNCoreMLFeatureValueObservation {
+                let fv = featureObservation.featureValue
+
+                // Try dictionary format
+                let dict = fv.dictionaryValue
+                if !dict.isEmpty {
+                    var benignProb: Double = 0.0
+                    var malignantProb: Double = 0.0
+                    for (key, value) in dict {
+                        if let label = key as? String {
+                            let prob = value.doubleValue
+                            if label == "Benign" { benignProb = prob }
+                            else if label == "Malignant" { malignantProb = prob }
+                        }
+                    }
+                    let isMalignant = malignantProb > benignProb
+                    let confidence = max(benignProb, malignantProb)
+                    print("MLService Binary: Benign = \(benignProb), Malignant = \(malignantProb)")
+                    completion(isMalignant, confidence)
                     return
                 }
 
@@ -451,6 +510,80 @@ class MLService {
         }
     }
 
+    // MARK: - Mole Detection (Stage 0)
+    private func runMoleDetection(image: UIImage, completion: @escaping (Bool, Double?) -> Void) {
+        guard let moleDetectorModel = moleDetectorModel else {
+            print("MLService: Mole detector model not loaded")
+            completion(false, nil)
+            return
+        }
+
+        // Convert UIImage to CVPixelBuffer
+        guard let pixelBuffer = convertToCVPixelBuffer(image: image) else {
+            print("MLService: Failed to convert image to CVPixelBuffer")
+            completion(false, nil)
+            return
+        }
+
+        // Add Gaussian noise (critical for mole detector robustness)
+        guard let noisyPixelBuffer = addGaussianNoise(to: pixelBuffer) else {
+            print("MLService: Failed to add Gaussian noise")
+            completion(false, nil)
+            return
+        }
+
+        let request = VNCoreMLRequest(model: moleDetectorModel) { request, error in
+            if let error = error {
+                print("MLService Mole Detector: Error - \(error)")
+                completion(false, nil)
+                return
+            }
+
+            // Try standard classification results
+            if let results = request.results as? [VNClassificationObservation],
+               let topResult = results.first {
+                print("MLService Mole Detector: Probability = \(topResult.confidence)")
+                let isMole = Double(topResult.confidence) >= 0.5
+                completion(isMole, Double(topResult.confidence))
+                return
+            }
+
+            // Fallback: handle feature value observations
+            if let featureObservation = request.results?.first as? VNCoreMLFeatureValueObservation {
+                let fv = featureObservation.featureValue
+
+                if let array = fv.multiArrayValue {
+                    let vals = self.doubleValues(from: array)
+                    if let probability = vals.first {
+                        print("MLService Mole Detector: Probability = \(probability)")
+                        let isMole = probability >= 0.5
+                        completion(isMole, probability)
+                        return
+                    }
+                }
+            }
+
+            print("MLService Mole Detector: No usable results")
+            completion(false, nil)
+        }
+
+        #if targetEnvironment(simulator)
+        request.usesCPUOnly = true
+        #endif
+        request.imageCropAndScaleOption = .centerCrop
+
+        // Perform Vision request with noisy pixel buffer
+        let handler = VNImageRequestHandler(cvPixelBuffer: noisyPixelBuffer, options: [:])
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try handler.perform([request])
+            } catch {
+                print("MLService Mole Detector: Vision request failed - \(error)")
+                completion(false, nil)
+            }
+        }
+    }
+
     // MARK: - Vision Request Helper
     private func performVisionRequest(_ request: VNCoreMLRequest, on image: UIImage, completion: @escaping (Bool) -> Void) {
         let orientation = CGImagePropertyOrientation(image.imageOrientation)
@@ -505,126 +638,120 @@ class MLService {
         return exps.map { $0 / sum }
     }
 
-    // MARK: - NEW: Build MLFeatureProvider for models that expect multiArray inputs
-    // This function inspects the model input description and constructs either a pixelBuffer-based provider
-    // or a multiArray provider (the latter by converting the UIImage into a normalized MLMultiArray).
-    private func featureProviderForModel(_ model: MLModel, image: UIImage, targetSize: CGSize = CGSize(width: 224, height: 224)) throws -> MLFeatureProvider {
-        guard let inputDescPair = model.modelDescription.inputDescriptionsByName.first else {
-            throw NSError(domain: "MLService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model has no inputs"])
-        }
-        let inputName = inputDescPair.key
-        let desc = inputDescPair.value
+    // MARK: - CVPixelBuffer Helpers
+    private func convertToCVPixelBuffer(image: UIImage) -> CVPixelBuffer? {
+        let targetSize = CGSize(width: 224, height: 224)
 
-        if desc.type == .image {
-            // build pixel buffer
-            let width = Int(targetSize.width), height = Int(targetSize.height)
-            guard let pb = image.toCVPixelBuffer(width: width, height: height) else {
-                throw NSError(domain: "MLService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create pixel buffer"])
-            }
-            let fv = MLFeatureValue(pixelBuffer: pb)
-            return try MLDictionaryFeatureProvider(dictionary: [inputName: fv])
+        UIGraphicsBeginImageContextWithOptions(targetSize, true, 1.0)
+        defer { UIGraphicsEndImageContext() }
+
+        image.draw(in: CGRect(origin: .zero, size: targetSize))
+        guard let resizedImage = UIGraphicsGetImageFromCurrentImageContext(),
+              let cgImage = resizedImage.cgImage else {
+            return nil
         }
 
-        if desc.type == .multiArray {
-            // inspect shape constraint if present
-            if let constraint = desc.multiArrayConstraint {
-                let shape = constraint.shape.map { $0.intValue }
-                let batchFirst = (shape.count == 4 && shape[0] == 1)
-                // heuristics to extract width/height from shape; fallback to 224
-                var h = 224, w = 224
-                if shape.count == 4 { h = shape[2]; w = shape[3] }
-                else if shape.count == 3 { h = shape[1]; w = shape[2] }
+        let width = cgImage.width
+        let height = cgImage.height
 
-                guard let mlarr = imageToMLMultiArray(image, width: w, height: h, batchFirst: batchFirst) else {
-                    throw NSError(domain: "MLService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to construct MLMultiArray"])
-                }
-                let fv = MLFeatureValue(multiArray: mlarr)
-                return try MLDictionaryFeatureProvider(dictionary: [inputName: fv])
-            } else {
-                // no constraint info — use default
-                guard let mlarr = imageToMLMultiArray(image) else {
-                    throw NSError(domain: "MLService", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create default MLMultiArray"])
-                }
-                let fv = MLFeatureValue(multiArray: mlarr)
-                return try MLDictionaryFeatureProvider(dictionary: [inputName: fv])
-            }
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue
+        ] as CFDictionary
+
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32ARGB,
+            attrs,
+            &pixelBuffer
+        )
+
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            return nil
         }
 
-        // fallback: try pixel buffer
-        if let pb = image.toCVPixelBuffer(width: Int(targetSize.width), height: Int(targetSize.height)) {
-            let fv = MLFeatureValue(pixelBuffer: pb)
-            return try MLDictionaryFeatureProvider(dictionary: [inputName: fv])
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else {
+            return nil
         }
 
-        throw NSError(domain: "MLService", code: 5, userInfo: [NSLocalizedDescriptionKey: "Unsupported model input type \(desc.type)"])
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return buffer
     }
 
-    // Convert UIImage -> MLMultiArray (Float32) normalized with ImageNet mean/std.
-    // Default output shape = [1,3,H,W] (batchFirst = true). Adjust if model expects different ordering.
-    private func imageToMLMultiArray(_ image: UIImage,
-                                     width: Int = 224,
-                                     height: Int = 224,
-                                     mean: (Float,Float,Float) = (0.485, 0.456, 0.406),
-                                     std: (Float,Float,Float)  = (0.229, 0.224, 0.225),
-                                     batchFirst: Bool = true) -> MLMultiArray? {
-        guard let resized = image.resized(to: CGSize(width: width, height: height)),
-              let cgImage = resized.cgImage else { return nil }
+    private func addGaussianNoise(to pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bytesPerRow = 4 * width
-        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue
-        guard let ctx = CGContext(data: nil, width: width, height: height,
-                                  bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-                                  space: colorSpace, bitmapInfo: bitmapInfo),
-              let data = ctx.data else { return nil }
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
 
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            return nil
+        }
 
-        // Build MLMultiArray
-        let shape: [NSNumber] = batchFirst ? [1, 3, NSNumber(value: height), NSNumber(value: width)] : [3, NSNumber(value: height), NSNumber(value: width)]
-        guard let mlArray = try? MLMultiArray(shape: shape, dataType: .float32) else { return nil }
+        var noisyPixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            CVPixelBufferGetPixelFormatType(pixelBuffer),
+            nil,
+            &noisyPixelBuffer
+        )
 
-        let ptr = data.bindMemory(to: UInt8.self, capacity: bytesPerRow * height)
-        let count = mlArray.count
-        let floatPtr = mlArray.dataPointer.bindMemory(to: Float.self, capacity: count)
+        guard status == kCVReturnSuccess, let outputBuffer = noisyPixelBuffer else {
+            return nil
+        }
 
-        let C = 3
-        let H = height
-        let W = width
+        CVPixelBufferLockBaseAddress(outputBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(outputBuffer, []) }
 
-        let meanR = mean.0, meanG = mean.1, meanB = mean.2
-        let stdR = std.0, stdG = std.1, stdB = std.2
+        guard let outputAddress = CVPixelBufferGetBaseAddress(outputBuffer) else {
+            return nil
+        }
 
-        for y in 0..<H {
-            for x in 0..<W {
-                let pixelIndex = y * bytesPerRow + x * 4
-                let r = ptr[pixelIndex + 1]
-                let g = ptr[pixelIndex + 2]
-                let b = ptr[pixelIndex + 3]
+        let inputPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let outputPtr = outputAddress.assumingMemoryBound(to: UInt8.self)
 
-                let rf = (Float(r) / 255.0 - meanR) / stdR
-                let gf = (Float(g) / 255.0 - meanG) / stdG
-                let bf = (Float(b) / 255.0 - meanB) / stdB
+        for row in 0..<height {
+            for col in 0..<width {
+                let pixelOffset = row * bytesPerRow + col * 4
 
-                if batchFirst {
-                    let idxR = ((0 * C + 0) * H + y) * W + x
-                    let idxG = ((0 * C + 1) * H + y) * W + x
-                    let idxB = ((0 * C + 2) * H + y) * W + x
-                    floatPtr[idxR] = rf
-                    floatPtr[idxG] = gf
-                    floatPtr[idxB] = bf
-                } else {
-                    let idxR = (0 * H + y) * W + x
-                    let idxG = (1 * H + y) * W + x
-                    let idxB = (2 * H + y) * W + x
-                    floatPtr[idxR] = rf
-                    floatPtr[idxG] = gf
-                    floatPtr[idxB] = bf
+                // For each RGB channel (BGRA format, skip alpha at offset+3)
+                for channel in 0..<3 {
+                    let offset = pixelOffset + channel
+                    let originalValue = Double(inputPtr[offset])
+
+                    // Add noise: uniform random in [-12.75, 12.75]
+                    let noise = Double.random(in: -12.75...12.75)
+                    let noisyValue = originalValue + noise
+
+                    // Clamp to [0, 255]
+                    let clampedValue = max(0, min(255, noisyValue))
+                    outputPtr[offset] = UInt8(clampedValue)
                 }
+
+                // Copy alpha channel unchanged
+                outputPtr[pixelOffset + 3] = inputPtr[pixelOffset + 3]
             }
         }
 
-        return mlArray
+        return outputBuffer
     }
 }
 
