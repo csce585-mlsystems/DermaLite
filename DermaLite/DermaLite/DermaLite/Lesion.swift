@@ -10,12 +10,22 @@ final class Lesion {
     var predictedDiagnosis: String?
     var confidence: Double?
 
-    init(id: UUID = UUID(), createdAt: Date = Date(), imageFileName: String, notes: String? = nil, predictedDiagnosis: String? = nil, confidence: Double? = nil) {
+    // NEW: optional overlay filename stored for Grad-CAM / CAM overlays (saved in Documents)
+    var overlayFileName: String?
+
+    init(id: UUID = UUID(),
+         createdAt: Date = Date(),
+         imageFileName: String,
+         notes: String? = nil,
+         predictedDiagnosis: String? = nil,
+         confidence: Double? = nil,
+         overlayFileName: String? = nil) {
         self.id = id
         self.createdAt = createdAt
         self.imageFileName = imageFileName
         self.notes = notes
         self.predictedDiagnosis = predictedDiagnosis
         self.confidence = confidence
+        self.overlayFileName = overlayFileName
     }
 }
