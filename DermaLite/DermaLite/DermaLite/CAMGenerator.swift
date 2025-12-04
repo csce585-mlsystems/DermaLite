@@ -14,7 +14,7 @@ final class CAMGenerator {
     private var channels: Int = 0
 
     // Name of model resource in bundle (adjust if needed)
-    private let modelResourceName = "dermalite_mobilenetv2"
+    private let modelResourceName = "MobileNetV2_CAM"
     private let classifierWeightsResource = "classifier_weights" // .bin (flat float32) or .json
 
     private init() {
@@ -88,8 +88,14 @@ final class CAMGenerator {
 
         // Determine predicted class index from logits
         let logitsFloats = logits.toFloatArray()
+        print("logits shape:", logits.shape)
+        print("logits count:", logits.count)
         guard let predIndex = logitsFloats.enumerated().max(by: { $0.element < $1.element })?.offset else {
             print("CAMGenerator: cannot determine predicted class from logits")
+            return nil
+        }
+        if predIndex >= numClasses {
+            print("CAMGenerator: predIndex (\(predIndex)) is out of range for numClasses (\(numClasses))")
             return nil
         }
 
@@ -103,6 +109,7 @@ final class CAMGenerator {
         var heatmap = [Float](repeating: 0, count: featH * featW)
         let weightBase = predIndex * channels
         for c in 0..<channels {
+            print("weightBase:", weightBase, "channels:", channels, "classifierWeights.count:", classifierWeights.count)
             let w = classifierWeights[weightBase + c]
             let base = c * featH * featW
             for i in 0..<(featH * featW) {
@@ -242,7 +249,7 @@ final class CAMGenerator {
         // Prefer outputs with names containing activ/feature/map
         for name in mlModel.modelDescription.outputDescriptionsByName.keys {
             let lower = name.lowercased()
-            if lower.contains("activ") || lower.contains("feature") || lower.contains("map") || lower.contains("conv") || lower.contains("var") {
+            if lower.contains("activ") || lower.contains("feature") || lower.contains("map") || lower.contains("conv") {
                 return name
             }
         }
