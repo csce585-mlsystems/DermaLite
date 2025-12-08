@@ -78,10 +78,6 @@ python trainp0.py
   - **AUC**: Ability to rank positive cases higher than negative cases
   - **Loss**: Categorical crossentropy
 
-  
-# < The following is only applicable for the final project submission >  
-
-
 ## Dependencies  
 ### Include all dependencies required to run the project. Example:  
 - Python 3.12+  
