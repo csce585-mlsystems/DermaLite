@@ -166,10 +166,13 @@ Example:
 │   ├── test_dermalite_binary.py
 │   ├── test_mole_detector.py
 │   └── test_multiclass_classifier.py
-├── training_history.png
+├── training_history.pn
 └── uv.lock
 ```
 
 ## Demo  
-- 
+[![DermaLite Demo](https://github.com/user-attachments/assets/33fe860a-8395-460a-8d9b-99c8ea23f55d)](https://github.com/csce585-mlsystems/DermaLite/wiki/Demo)
+- This demo walks through the core functionality of DermaLite. It begins by showing the three primary screens: Scan, Library, and Insights. After that, it demonstrates selecting a mole image from the library, running the classifier, and viewing the prediction along with a Grad CAM heatmap that the user can adjust for transparency.
+
+- The demo also highlights important model limitations. A non lesion image of a dog is not classified as a mole, which is expected. The camera workflow is then shown, capturing images in real time. The model fails to handle a darker skinned sample and does not return a correct result. A lighter skinned sample is processed but incorrectly labeled as malignant. These cases help illustrate the need for more diverse training data and additional calibration work.
 ---
