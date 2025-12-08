@@ -97,23 +97,79 @@ For Python users: Please use [uv](https://docs.astral.sh/uv/) as your package ma
 ## Directory Structure  
 Example:  
 ```
-|- data (mandatory)
-|- src (mandatory)
-|   |- model.py
-|   |- example.py
-|- train.py
-|- run.py (mandatory)
-|- result.py (mandatory)
+├── apis
+│   └── gradcam_api.py
+├── best_base_weights.h5
+├── confusion_matrix_epoch_10.png
+├── confusion_matrix_epoch_2.png
+├── confusion_matrix_epoch_4.png
+├── confusion_matrix_epoch_6.png
+├── confusion_matrix_epoch_8.png
+├── dermalite
+│   ├── bin
+│   ├── DermaLite
+│   ├── DermaLite.xcodeproj
+│   ├── include
+│   ├── lib
+│   ├── pyvenv.cfg
+│   └── share
+├── dermalite_efficientnetb0_model.h5
+├── DermaLite_Final_Report.docx
+├── dermalite_mobilenet_model.h5
+├── dermalite_mobilenetv2.mlpackage
+│   ├── Data
+│   └── Manifest.json
+├── dermalite_model.h5
+├── dermalite_model.mlpackage
+│   ├── Data
+│   └── Manifest.json
+├── dermalite_saved_model
+│   ├── assets
+│   ├── fingerprint.pb
+│   ├── keras_metadata.pb
+│   ├── saved_model.pb
+│   └── variables
+├── dermalite_test
+│   ├── bin
+│   ├── include
+│   ├── lib
+│   └── pyvenv.cfg
+├── doc
+│   ├── DermaLite_Final_Report.docx
+│   ├── Milestone P0 — Project Proposal and Motivation.md
+│   ├── Milestone P1 — Initial Experiment and Evaluation Setup.md
+│   ├── Slides Milestone P0 — Project Proposal and Motivation.pdf
+│   ├── Slides Milestone P1 — Initial Experiment and Evaluation Setup.pdf
+│   └── Slides Milestone P2 - Final Presentation.pdf
+├── mobilenetv2_ham10000_balanced.pth
+├── mobilenetv2_ham10000.pth
+├── Model
+│   ├── binary_classifier
+│   ├── modelv1.py
+│   ├── mole_detector
+│   ├── multiclass_classifier
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── sa.py
+│   ├── shared
+│   └── trainp1.py
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── test_binary_classifier.py
+├── tests
+│   ├── __init__.py
+│   ├── __pycache__
+│   ├── conftest.py
+│   ├── README.md
+│   ├── test_binary_classifier.py
+│   ├── test_dermalite_binary.py
+│   ├── test_mole_detector.py
+│   └── test_multiclass_classifier.py
+├── training_history.png
+└── uv.lock
 ```
 
-⚠️ Notes:  
-- All projects must include the `run.<ext>` script (extension depends on your programming language) at the project root directory. This is the script users will run to execute your project.  
-- If your project computes/compares metrics such as accuracy, latency, or energy, you must include the `result.<ext>` script to plot the results.  
-- Result files such as `.csv`, `.jpg`, or raw data must be saved in the `data` directory.  
-
-## How to reproduce code 
-
 ## Demo  
-- All projects must include video(s) demonstrating your project.  
-- Please use annotations/explanations to clarify what is happening in the demo.  
+- 
 ---
